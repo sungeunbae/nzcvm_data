@@ -197,7 +197,7 @@ Examples:
     parser.add_argument("--vp-col", type=int, required=True, help="Vp column index")
     parser.add_argument("--vs-col", type=int, required=True, help="Vs column index")
     parser.add_argument("--rho-col", type=int, required=True, help="Rho column index")
-    parser.add_argument("--already-elev", action="store_true", help="Depth is already elevation")
+    parser.add_argument("--already-elev", action="store_true", help="Depth is already elevation, don't multiply by -1")
     
     # Output options
     parser.add_argument("--output-name", type=Path, default=None, help="Output filename")

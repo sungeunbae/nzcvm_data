@@ -7,7 +7,7 @@ Specifically designed for NZTM coordinate system HDF5 files.
 Gridded HDF5 (from interpolate_nztm_tomo_data.py):
   - x_nztm and y_nztm at root level (1D coordinate arrays)
   - Groups by elevation with vp, vs, rho (2D: ny x nx grids)
-  - All coordinates automatically converted to WGS84 for plotting (0-360deg longitude)
+  - All coordinates automatically converted to WGS84 for plotting (-180 to 180 longitude)
 
 Sparse HDF5 (from format_nztm_tomo_data.py):
   - x_nztm and y_nztm at root level (unique coordinate lookup tables)
@@ -59,7 +59,7 @@ except ImportError:
 # ----------------------------
 def nztm_to_wgs84(x_nztm: np.ndarray, y_nztm: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Convert NZTM (EPSG:2193) to WGS84 with longitude in 0-360deg range.
+    Convert NZTM (EPSG:2193) to WGS84 with longitude in -180 to 180 range.
 
     Parameters
     ----------
@@ -71,12 +71,13 @@ def nztm_to_wgs84(x_nztm: np.ndarray, y_nztm: np.ndarray) -> Tuple[np.ndarray, n
     Returns
     -------
     tuple
-        (lat_grid, lon_grid) both as 2D arrays (ny, nx) where lon is in 0-360 range
+        (lat_grid, lon_grid) both as 2D arrays (ny, nx) where lon is in -180 to 180 range
         
     Note
     ----
     Returns 2D arrays to properly handle projection warping. NZTM grid is rectilinear
     in NZTM space but slightly warped in WGS84 space.
+    PyProj returns WGS84 in standard -180 to 180 convention; no conversion needed.
     """
     transformer = Transformer.from_crs("EPSG:2193", "EPSG:4326", always_xy=True)
     
@@ -84,8 +85,9 @@ def nztm_to_wgs84(x_nztm: np.ndarray, y_nztm: np.ndarray) -> Tuple[np.ndarray, n
     x_grid, y_grid = np.meshgrid(x_nztm, y_nztm)
     lon_grid, lat_grid = transformer.transform(x_grid, y_grid)
     
-    # Convert longitude to 0-360 range
-    lon_grid = np.where(lon_grid < 0, lon_grid + 360, lon_grid)
+    # PyProj returns WGS84 in standard -180 to 180 convention
+    # New Zealand is at 172-179°E (positive in this convention)
+    # No conversion needed
     
     # Return 2D arrays to properly handle projection warping
     return lat_grid, lon_grid
@@ -145,10 +147,10 @@ def choose_projection_and_extent(lats: np.ndarray, lons: np.ndarray,
         extent = (minlon, maxlon, minlat, maxlat)
         extent_crs = ax_crs
     else:
-        # Standard PlateCarree
+        # Standard PlateCarree with -180 to 180 longitude convention
         ax_crs = ccrs.PlateCarree() if HAS_CARTOPY else None
         minlon = max(-180.0 + eps, lon_min - pad_lon)
-        maxlon = min(360.0 - eps, lon_max + pad_lon)
+        maxlon = min(180.0 - eps, lon_max + pad_lon)
         extent = (minlon, maxlon, minlat, maxlat)
         extent_crs = data_crs
     
@@ -167,7 +169,7 @@ def load_h5_data(h5file: Path, elevation: str, scalar: str,
     - Root level: x_nztm (1D), y_nztm (1D)
     - Groups by elevation: vp, vs, rho (2D: ny x nx)
     
-    Returns lat_grid, lon_grid (2D arrays converted to WGS84 0-360deg), and data.
+    Returns lat_grid, lon_grid (2D arrays converted to WGS84 -180 to 180 convention), and data.
     """
     with h5py.File(h5file, "r") as f:
         # Load NZTM coordinates from root
@@ -205,12 +207,12 @@ def load_sparse_data_for_elevation(
     elev_tolerance: float
 ) -> pd.DataFrame:
     """
-    Load sparse point data for a specific elevation from sparce HDF5 file.
+    Load sparse point data for a specific elevation from sparse HDF5 file.
     Sparse format structure (from format_nztm_tomo_data.py):
       - Root: x_nztm, y_nztm (unique coordinate lookup tables)
       - Elevation groups: structured array with (x_idx, y_idx, vp, vs, rho)
     
-    Converts NZTM to WGS84 (0-360deg longitude).
+    Converts NZTM to WGS84 (-180 to 180 longitude convention).
     Returns DataFrame with columns: lat, lon, scalar
     """
     with h5py.File(h5file, "r") as f:
@@ -244,10 +246,10 @@ def load_sparse_data_for_elevation(
         y_coords = y_nztm[data_table['y_idx']]
         scalar_vals = data_table[scalar].astype(float)
         
-        # Convert to WGS84
+        # Convert to WGS84 (-180 to 180 convention)
         transformer = Transformer.from_crs("EPSG:2193", "EPSG:4326", always_xy=True)
         lon_vals, lat_vals = transformer.transform(x_coords, y_coords)
-        lon_vals = np.where(lon_vals < 0, lon_vals + 360, lon_vals)
+        # PyProj already returns WGS84 in standard -180 to 180 convention; no conversion needed
 
         return pd.DataFrame({
             'lat': lat_vals,
