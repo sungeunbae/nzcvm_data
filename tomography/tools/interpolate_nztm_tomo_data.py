@@ -3,7 +3,7 @@
 Interpolate sparse tomography HDF5 to gridded HDF5 format.
 
 Input: Sparse HDF5 from format_nztm_tomo_data.py
-Output: Gridded HDF5 suitable for tomo_nztm_map.py visualization
+Output: Gridded HDF5 suitable for map_nztm_tomo.py visualization
 
 Gridded format:
   - Root: x_nztm (1D), y_nztm (1D)
@@ -181,7 +181,7 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Takes sparse HDF5 from format_nztm_tomo_data.py and interpolates to a regular
-grid suitable for visualization with tomo_nztm_map.py.
+grid suitable for visualization with map_nztm_tomo.py.
 
 Examples:
   # Default interpolation (linear, 2 km spacing)
@@ -263,7 +263,7 @@ Examples:
     
     print("\n" + "=" * 70)
     print("COMPLETE")
-    print(f"Next: python tomo_nztm_map.py {output_file} --scalar vs")
+    print(f"Next: python map_nztm_tomo.py {output_file} --scalar vs")
     print("=" * 70)
 
 

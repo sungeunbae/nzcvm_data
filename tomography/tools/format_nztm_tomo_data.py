@@ -176,12 +176,12 @@ with interpolate_nztm_tomo_data.py to create gridded data for visualization.
 
 Examples:
   # CSV input
-  python %(prog)s data.csv --x-nztm-col 0 --y-nztm-col 1 \\
-    --depth-col 2 --vp-col 3 --vs-col 4 --rho-col 5
+  python %(prog)s data.csv --x-nztm-col 11 --y-nztm-col 12 \\
+    --depth-col 8 --vp-col 0 --vs-col 2 --rho-col 3
   
   # Parquet input (memory efficient chunked loading)
-  python %(prog)s data.parquet --x-nztm-col 11 --y-nztm-col 12 \\
-    --depth-col 8 --vp-col 0 --vs-col 2 --rho-col 3
+  python %(prog)s data.parquet --x-nztm-col 13 --y-nztm-col 14 \\
+    --depth-col 2 --vp-col 7 --vs-col 8 --rho-col 10
   
   # If depth column is already elevation (positive up):
   python %(prog)s data.csv --x-nztm-col 0 --y-nztm-col 1 \\

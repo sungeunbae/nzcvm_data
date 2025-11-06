@@ -15,16 +15,16 @@ Sparse HDF5 (from format_nztm_tomo_data.py):
   - No column specifications needed - format is standardized
 
 Usage:
-    map_nztm_tomo.py h5file1 [--compared h5file2] \
-                     [--point-h5 sparse_h5file] \
+    map_nztm_tomo.py gridfile1 [--compared gridfile2] \
+                     [--sparse sparse_h5file] \
                      [--scalar {vp,vs,rho}] [--vmin VMIN] [--vmax VMAX] [--cmap CMAP] \
                      [--elevations ELEVATIONS ...] [--output-dir DIR] [--no-cartopy] [--dpi DPI]
 
 Modes:
-  1. Standard: Plot scalar data from gridded h5file1
-  2. Ratio: Provide --compared h5file2 to plot ln(h5file2 / h5file1)
-  3. Overlay: Provide --point-h5 to overlay sparse points on gridded HDF5 data
-  4. Point-only: Provide --point-h5 without h5file1 to plot only sparse points
+  1. Standard: Plot scalar data from gridded gridfile1
+  2. Ratio: Provide --compared gridfile2 to plot ln(gridfile2 / gridfile1)
+  3. Overlay: Provide --sparse to overlay sparse points on gridded HDF5 data
+  4. Sparse-only: Provide --sparse without gridfile1 to plot only sparse points
 """
 
 import warnings
@@ -102,14 +102,14 @@ def choose_projection_and_extent(lats: np.ndarray, lons: np.ndarray,
                                   point_lons: Optional[np.ndarray] = None) -> Tuple[object, object, Tuple[float, float, float, float], object]:
     """
     Determine projection and extent for plotting.
-    Include point coordinates in extent calculation if provided.
+    Include spart point coordinates in extent calculation if provided.
 
     Returns (ax_crs, data_crs, extent, extent_crs).
     """
     lats = np.asarray(lats, dtype=float)
     lons = np.asarray(lons, dtype=float)
     
-    # Combine HDF5 and point coordinates for extent calculation
+    # Combine grid and sparse point coordinates for extent calculation
     if point_lats is not None and point_lons is not None and len(point_lats) > 0:
         all_lats = np.concatenate([lats.ravel(), point_lats.ravel()])
         all_lons = np.concatenate([lons.ravel(), point_lons.ravel()])
@@ -198,14 +198,14 @@ def load_h5_data(h5file: Path, elevation: str, scalar: str,
     return lat_grid, lon_grid, data
 
 
-def load_point_data_for_elevation(
+def load_sparse_data_for_elevation(
     h5file: Path,
     target_elevation: float,
     scalar: str,
     elev_tolerance: float
 ) -> pd.DataFrame:
     """
-    Load sparse point data for a specific elevation from point HDF5 file.
+    Load sparse point data for a specific elevation from sparce HDF5 file.
     Sparse format structure (from format_nztm_tomo_data.py):
       - Root: x_nztm, y_nztm (unique coordinate lookup tables)
       - Elevation groups: structured array with (x_idx, y_idx, vp, vs, rho)
@@ -270,19 +270,19 @@ def create_map_plot(
     cmap: str,
     use_cartopy: bool,
     is_ratio: bool = False,
-    point_overlay_data: Optional[pd.DataFrame] = None,
+    sparse_overlay_data: Optional[pd.DataFrame] = None,
     base_filename: str = "",
     compared_filename: str = "",
-    point_only: bool = False,
+    sparse_only: bool = False,
     no_outline_marker: bool = False,
     marker_size: float = 5.0,
     marker_zorder: int = 2
 ) -> Tuple[plt.Figure, plt.Axes]:
-    """Create a map plot with optional point overlay."""
+    """Create a map plot with optional sparse point overlay."""
 
-    # Get point coordinates for extent calculation
-    point_lats = point_overlay_data['lat'].values if point_overlay_data is not None and not point_overlay_data.empty else None
-    point_lons = point_overlay_data['lon'].values if point_overlay_data is not None and not point_overlay_data.empty else None
+    # Get spart point coordinates for extent calculation
+    point_lats = sparse_overlay_data['lat'].values if sparse_overlay_data is not None and not sparse_overlay_data.empty else None
+    point_lons = sparse_overlay_data['lon'].values if sparse_overlay_data is not None and not sparse_overlay_data.empty else None
 
     if use_cartopy and HAS_CARTOPY:
         ax_crs, data_crs, extent, extent_crs = choose_projection_and_extent(lat, lon, point_lats, point_lons)
@@ -303,8 +303,8 @@ def create_map_plot(
         fig, ax = plt.subplots(figsize=(12, 8))
         data_crs = None
     
-    # Plot HDF5 data if not point-only
-    if not point_only:
+    # Plot HDF5 data if not sparse-only
+    if not sparse_only:
         # lon and lat are already 2D arrays from nztm_to_wgs84, use them directly
         if use_cartopy and HAS_CARTOPY:
             im = ax.pcolormesh(lon, lat, data, transform=data_crs,
@@ -321,15 +321,15 @@ def create_map_plot(
             cbar.set_label(f'{scalar.upper()} [{unit}]', fontsize=12)
     
     # Overlay point data
-    if point_overlay_data is not None and not point_overlay_data.empty:
-        point_lons = point_overlay_data['lon'].values
-        point_lats = point_overlay_data['lat'].values
-        point_vals = point_overlay_data['scalar'].values
+    if sparse_overlay_data is not None and not sparse_overlay_data.empty:
+        point_lons = sparse_overlay_data['lon'].values
+        point_lats = sparse_overlay_data['lat'].values
+        point_vals = sparse_overlay_data['scalar'].values
 
         edge_color = 'none' if no_outline_marker else 'black'
         edge_width = 0 if no_outline_marker else 0.5
         
-        if point_only:
+        if sparse_only:
             if use_cartopy and HAS_CARTOPY:
                 sc = ax.scatter(point_lons, point_lats, c=point_vals, cmap=cmap,
                                vmin=vmin, vmax=vmax, s=marker_size,
@@ -359,12 +359,12 @@ def create_map_plot(
     elev_float = float(elevation.replace("_", "."))
     if is_ratio:
         title = f'ln({scalar.upper()}) Ratio: {compared_filename} / {base_filename}\nElevation: {elev_float:.1f} km'
-    elif point_only:
-        title = f'Point Data: {scalar.upper()}\nElevation: {elev_float:.1f} km'
+    elif sparse_only:
+        title = f'Sparse Point Data: {scalar.upper()}\nElevation: {elev_float:.1f} km'
     else:
         title = f'{scalar.upper()} from {base_filename}'
-        if point_overlay_data is not None and not point_overlay_data.empty:
-            title += f' + Point ({len(point_overlay_data)} points)'
+        if sparse_overlay_data is not None and not sparse_overlay_data.empty:
+            title += f' + Sparse Point ({len(sparse_overlay_data)} points)'
         title += f'\nElevation: {elev_float:.1f} km'
     
     ax.set_title(title, fontsize=14, fontweight='bold')
@@ -384,9 +384,9 @@ app = typer.Typer(add_completion=False)
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def main(
-    h5file1: Optional[Path] = typer.Argument(None, help="Primary HDF5 file (NZTM format)"),
+    gridfile1: Optional[Path] = typer.Argument(None, help="Primary HDF5 file (NZTM format)"),
     compared: Optional[Path] = typer.Option(None, "--compared", help="Second HDF5 for ratio comparison"),
-    point_h5: Optional[Path] = typer.Option(None, "--point-h5", help="Point HDF5 file for overlay or point-only mode"),
+    sparse: Optional[Path] = typer.Option(None, "--sparse", help="Sparse point HDF5 file for overlay or sparse-only mode"),
     scalar: str = typer.Option("vs", "--scalar", help="Scalar field: vp, vs, or rho"),
     vmin: Optional[float] = typer.Option(None, "--vmin", help="Colorbar minimum"),
     vmax: Optional[float] = typer.Option(None, "--vmax", help="Colorbar maximum"),
@@ -407,20 +407,20 @@ def main(
     """Plot 2D tomography maps from NZTM coordinate HDF5 files."""
     
     # Validate modes
-    point_only_mode = point_h5 is not None and h5file1 is None
-    is_overlay_mode = point_h5 is not None and h5file1 is not None
+    sparse_only_mode = sparse is not None and gridfile1 is None
+    is_overlay_mode = sparse is not None and gridfile1 is not None
     is_ratio_mode = compared is not None
     
     if is_ratio_mode and is_overlay_mode:
-        cli.print_error_and_exit("Cannot use both --compared and --point-h5")
+        cli.print_error_and_exit("Cannot use both --compared and --sparse")
 
-    if not point_only_mode and h5file1 is None:
-        cli.print_error_and_exit("Must provide h5file1 or use --point-h5 for point-only mode")
+    if not sparse_only_mode and gridfile1 is None:
+        cli.print_error_and_exit("Must provide gridfile1 or use --sparse for sparse-only mode")
 
     # Validate point arguments
-    if is_overlay_mode or point_only_mode:
+    if is_overlay_mode or sparse_only_mode:
         if scalar is None:
-            cli.print_error_and_exit("Point mode requires --scalar")
+            cli.print_error_and_exit("Sparse Point requires --scalar")
 
     if cmap is None:
         cmap = "seismic" if is_ratio_mode else "RdYlBu_r"
@@ -431,12 +431,12 @@ def main(
     
     # Output directory
     if output_dir is None:
-        if h5file1:
-            base_dir = h5file1.parent
+        if gridfile1:
+            base_dir = gridfile1.parent
             suffix = "_ln_ratio" if is_ratio_mode else ("_overlay" if is_overlay_mode else "")
             output_dir = base_dir / f"tomo_maps{suffix}"
         else:
-            output_dir = Path("tomo_maps_point_only")
+            output_dir = Path("tomo_maps_sparse_only")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -446,25 +446,25 @@ def main(
     
     if is_ratio_mode:
         print(f"[*] Mode: Ratio (ln(file2/file1))")
-        print(f"   Base: {h5file1.name}")
+        print(f"   Base: {gridfile1.name}")
         print(f"   Compared: {compared.name}")
-    elif point_only_mode:
-        print(f"[*] Mode: Point-only")
-        print(f"   Point HDF5: {point_h5.name}")
+    elif sparse_only_mode:
+        print(f"[*] Mode: Sparse-only")
+        print(f"   Sparse Point HDF5: {sparse.name}")
     elif is_overlay_mode:
-        print(f"[*] Mode: HDF5 + Point overlay")
-        print(f"   HDF5: {h5file1.name}")
-        print(f"   Point HDF5: {point_h5.name}")
+        print(f"[*] Mode: HDF5 + Sparse point overlay")
+        print(f"   HDF5: {gridfile1.name}")
+        print(f"   Sparse Point HDF5: {sparse.name}")
     else:
-        print(f"[*] Mode: Standard HDF5")
-        print(f"   File: {h5file1.name}")
+        print(f"[*] Mode: Grid HDF5")
+        print(f"   File: {gridfile1.name}")
     
     print(f"   Scalar: {scalar.upper()}")
     print(f"   Output: {output_dir}")
     
     # Determine elevations
-    if not point_only_mode:
-        with h5py.File(h5file1, "r") as f:
+    if not sparse_only_mode:
+        with h5py.File(gridfile1, "r") as f:
             available_elevs = sorted([k for k in f.keys() if k not in ['x_nztm', 'y_nztm']], 
                                    key=lambda x: float(x.replace("_", ".")))
         
@@ -482,7 +482,7 @@ def main(
         
         print(f"\n   Elevations: {len(elevs_to_plot)}")
     else:
-        with h5py.File(point_h5, "r") as f:
+        with h5py.File(sparse, "r") as f:
             available_elevs = sorted([k for k in f.keys() if k not in ['x_nztm', 'y_nztm']],
                                    key=lambda x: float(x))
 
@@ -508,8 +508,8 @@ def main(
         
         for elev in elevs_to_plot:
             try:
-                if not point_only_mode:
-                    _, _, data = load_h5_data(h5file1, elev, scalar, mask_values_list)
+                if not sparse_only_mode:
+                    _, _, data = load_h5_data(gridfile1, elev, scalar, mask_values_list)
                     if is_ratio_mode:
                         _, _, data2 = load_h5_data(compared, elev, scalar, mask_values_list)
                         with np.errstate(divide='ignore', invalid='ignore'):
@@ -520,10 +520,10 @@ def main(
                     else:
                         all_vals.extend(data[~np.isnan(data)])
                 
-                if point_h5:
-                    point_data = load_point_data_for_elevation(point_h5, float(elev.replace('_', '.')), scalar, elev_tolerance)
-                    if not point_data.empty:
-                        all_vals.extend(point_data['scalar'].values)
+                if sparse:
+                    sparse_data = load_sparse_data_for_elevation(sparse, float(elev.replace('_', '.')), scalar, elev_tolerance)
+                    if not sparse_data.empty:
+                        all_vals.extend(sparse_data['scalar'].values)
             except:
                 continue
         
@@ -547,8 +547,8 @@ def main(
         
         try:
             # Load HDF5 data
-            if not point_only_mode:
-                lat, lon, data1 = load_h5_data(h5file1, elev, scalar, mask_values_list)
+            if not sparse_only_mode:
+                lat, lon, data1 = load_h5_data(gridfile1, elev, scalar, mask_values_list)
                 
                 if is_ratio_mode:
                     _, _, data2 = load_h5_data(compared, elev, scalar, mask_values_list)
@@ -560,25 +560,25 @@ def main(
                     plot_data = data1
             
             # Load point data
-            point_data_slice = None
-            if point_h5:
+            sparse_data_slice = None
+            if sparse:
                 target_elev = float(elev.replace('_', '.'))
-                point_data_slice = load_point_data_for_elevation(point_h5, target_elev, scalar, elev_tolerance)
-                if point_data_slice is not None and not point_data_slice.empty:
-                    print(f"      Points: {len(point_data_slice)} points")
+                sparse_data_slice = load_sparse_data_for_elevation(sparse, target_elev, scalar, elev_tolerance)
+                if sparse_data_slice is not None and not sparse_data_slice.empty:
+                    print(f"      Points: {len(sparse_data_slice)} points")
 
-            # For point-only, create extent from point data
-            if point_only_mode and point_data_slice is not None and not point_data_slice.empty:
-                lat = np.array([point_data_slice['lat'].min(), point_data_slice['lat'].max()])
-                lon = np.array([point_data_slice['lon'].min(), point_data_slice['lon'].max()])
+            # For sparse-only, create extent from sparse data
+            if sparse_only_mode and sparse_data_slice is not None and not sparse_data_slice.empty:
+                lat = np.array([sparse_data_slice['lat'].min(), sparse_data_slice['lat'].max()])
+                lon = np.array([sparse_data_slice['lon'].min(), sparse_data_slice['lon'].max()])
                 plot_data = np.zeros((2, 2))
 
             # Compute differences in overlay mode
-            if is_overlay_mode and point_data_slice is not None and not point_data_slice.empty:
+            if is_overlay_mode and sparse_data_slice is not None and not sparse_data_slice.empty:
                 # lon and lat are already 2D, create flattened point coordinates
                 points = np.column_stack((lon.ravel(), lat.ravel()))
                 tree = KDTree(points)
-                query_points = point_data_slice[['lon', 'lat']].values
+                query_points = sparse_data_slice[['lon', 'lat']].values
                 dists, idxs = tree.query(query_points)
                 mask = dists < lonlat_tolerance
                 num_common = np.sum(mask)
@@ -586,12 +586,12 @@ def main(
                 if num_common > 0:
                     print(f"      Common: {num_common} points")
                     valid_h5 = plot_data.ravel()[idxs[mask]]
-                    valid_point = point_data_slice['scalar'].values[mask]
+                    valid_point = sparse_data_slice['scalar'].values[mask]
                     diffs = valid_h5 - valid_point
 
                     for lon_p, lat_p, h5_p, point_p, diff_p in zip(
-                        point_data_slice['lon'].values[mask],
-                        point_data_slice['lat'].values[mask],
+                        sparse_data_slice['lon'].values[mask],
+                        sparse_data_slice['lat'].values[mask],
                         valid_h5, valid_point, diffs
                     ):
                         all_diffs.append({
@@ -607,8 +607,8 @@ def main(
             elif limits_mode == "global":
                 plot_vmin, plot_vmax = global_vmin, global_vmax
             else:  # local
-                if point_only_mode and point_data_slice is not None:
-                    vals = point_data_slice['scalar'].values
+                if sparse_only_mode and sparse_data_slice is not None:
+                    vals = sparse_data_slice['scalar'].values
                     plot_vmin = np.percentile(vals, 2.0)
                     plot_vmax = np.percentile(vals, 98.0)
                 elif is_ratio_mode:
@@ -623,10 +623,10 @@ def main(
             fig, ax = create_map_plot(
                 lat, lon, plot_data, elevation=elev, scalar=scalar,
                 vmin=plot_vmin, vmax=plot_vmax, cmap=cmap, use_cartopy=use_cartopy,
-                is_ratio=is_ratio_mode, point_overlay_data=point_data_slice,
-                base_filename=h5file1.name if h5file1 else "points",
+                is_ratio=is_ratio_mode, sparse_overlay_data=sparse_data_slice,
+                base_filename=gridfile1.name if gridfile1 else "points",
                 compared_filename=compared.name if compared else "",
-                point_only=point_only_mode, no_outline_marker=no_outline_marker,
+                sparse_only=sparse_only_mode, no_outline_marker=no_outline_marker,
                 marker_size=marker_size, marker_zorder=marker_zorder
             )
 
@@ -634,8 +634,8 @@ def main(
             fname_elev = elev.replace("_", ".")
             if is_ratio_mode:
                 outfile = output_dir / f"ln_ratio_{scalar}_elev{fname_elev}.png"
-            elif point_only_mode:
-                outfile = output_dir / f"point_only_{scalar}_elev{fname_elev}.png"
+            elif sparse_only_mode:
+                outfile = output_dir / f"sparse_only_{scalar}_elev{fname_elev}.png"
             elif is_overlay_mode:
                 outfile = output_dir / f"overlay_{scalar}_elev{fname_elev}.png"
             else:
