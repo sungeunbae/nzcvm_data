@@ -3,21 +3,28 @@
 2D Map Viewer for NZTM Tomography Data
 
 Specifically designed for NZTM coordinate system HDF5 files.
-- HDF5 files must have x_nztm and y_nztm at root level
-- Point HDF5 files are produced by process_nztm_tomo_data.py
-- All coordinates automatically converted to WGS84 for plotting (0-360deg longitude)
+
+Gridded HDF5 (from interpolate_nztm_tomo_data.py):
+  - x_nztm and y_nztm at root level (1D coordinate arrays)
+  - Groups by elevation with vp, vs, rho (2D: ny x nx grids)
+  - All coordinates automatically converted to WGS84 for plotting (0-360deg longitude)
+
+Sparse HDF5 (from format_nztm_tomo_data.py):
+  - x_nztm and y_nztm at root level (unique coordinate lookup tables)
+  - Groups by elevation with structured data array (x_idx, y_idx, vp, vs, rho)
+  - No column specifications needed - format is standardized
 
 Usage:
     map_nztm_tomo.py h5file1 [--compared h5file2] \
-                     [--point-h5 point_h5file] \
+                     [--point-h5 sparse_h5file] \
                      [--scalar {vp,vs,rho}] [--vmin VMIN] [--vmax VMAX] [--cmap CMAP] \
                      [--elevations ELEVATIONS ...] [--output-dir DIR] [--no-cartopy] [--dpi DPI]
 
 Modes:
-  1. Standard: Plot scalar data from h5file1
+  1. Standard: Plot scalar data from gridded h5file1
   2. Ratio: Provide --compared h5file2 to plot ln(h5file2 / h5file1)
-  3. Overlay: Provide --point-h5 to overlay points from HDF5 on HDF5 data
-  4. Point-only: Provide --point-h5 without h5file1 to plot only points
+  3. Overlay: Provide --point-h5 to overlay sparse points on gridded HDF5 data
+  4. Point-only: Provide --point-h5 without h5file1 to plot only sparse points
 """
 
 import warnings
@@ -178,12 +185,15 @@ def load_h5_data(h5file: Path, elevation: str, scalar: str,
         grp = f[elevation]
         data = grp[scalar][:].astype(float)
     
-    # Apply masking
+    # Apply masking (convert fill values to NaN)
+    # Use tolerance-based comparison for robustness with float32
+    data[np.abs(data - (-999.0)) < 0.01] = np.nan  # Fill value mask
+    
+    # Apply any additional mask values
     mask_values_list = mask_values if mask_values else []
-    data[data == -999.0] = np.nan
     for mask_val in mask_values_list:
         if not np.isnan(mask_val):
-            data[data == mask_val] = np.nan
+            data[np.abs(data - mask_val) < 0.001] = np.nan
     
     return lat_grid, lon_grid, data
 
@@ -195,14 +205,20 @@ def load_point_data_for_elevation(
     elev_tolerance: float
 ) -> pd.DataFrame:
     """
-    Load point data for a specific elevation from point HDF5 file.
+    Load sparse point data for a specific elevation from point HDF5 file.
+    Sparse format structure (from format_nztm_tomo_data.py):
+      - Root: x_nztm, y_nztm (unique coordinate lookup tables)
+      - Elevation groups: structured array with (x_idx, y_idx, vp, vs, rho)
+    
     Converts NZTM to WGS84 (0-360deg longitude).
-
     Returns DataFrame with columns: lat, lon, scalar
     """
     with h5py.File(h5file, "r") as f:
-        x_nztm = f['x_nztm'][:]
-        y_nztm = f['y_nztm'][:]
+        if 'x_nztm' not in f or 'y_nztm' not in f:
+            raise ValueError(f"File {h5file} missing x_nztm or y_nztm at root level.")
+        
+        x_nztm = f['x_nztm'][:].astype(float)
+        y_nztm = f['y_nztm'][:].astype(float)
 
         # Find elevation group within tolerance
         available_elevs = [k for k in f.keys() if k not in ['x_nztm', 'y_nztm']]
@@ -216,19 +232,21 @@ def load_point_data_for_elevation(
         if elev_group is None:
             return pd.DataFrame()
 
-        data = f[elev_group][scalar][:].astype(float)
-        data[data == -999.0] = np.nan
-
-        # Create meshgrid and find non-NaN points
-        x_grid, y_grid = np.meshgrid(x_nztm, y_nztm)
-        valid_mask = ~np.isnan(data)
-        x_points = x_grid[valid_mask]
-        y_points = y_grid[valid_mask]
-        scalar_vals = data[valid_mask]
-
+        # Load structured array from sparse format
+        grp = f[elev_group]
+        if 'data' not in grp:
+            return pd.DataFrame()
+        
+        data_table = grp['data'][:]
+        
+        # Reconstruct coordinates from indices
+        x_coords = x_nztm[data_table['x_idx']]
+        y_coords = y_nztm[data_table['y_idx']]
+        scalar_vals = data_table[scalar].astype(float)
+        
         # Convert to WGS84
         transformer = Transformer.from_crs("EPSG:2193", "EPSG:4326", always_xy=True)
-        lon_vals, lat_vals = transformer.transform(x_points, y_points)
+        lon_vals, lat_vals = transformer.transform(x_coords, y_coords)
         lon_vals = np.where(lon_vals < 0, lon_vals + 360, lon_vals)
 
         return pd.DataFrame({
