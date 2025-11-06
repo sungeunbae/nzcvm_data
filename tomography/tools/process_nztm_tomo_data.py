@@ -3,6 +3,9 @@ Process tomography data: load from various formats and save to NZTM HDF5.
 
 Optionally interpolates scattered data to a regular NZTM grid.
 Supports CSV, Parquet, and NetCDF input formats.
+
+BUGFIX: No-interpolation mode now correctly populates grid cells with point data.
+Uses fast direct array indexing (searchsorted) instead of nearest-neighbor matching.
 """
 
 import argparse
@@ -175,7 +178,7 @@ Examples:
     
     # Interpolation options
     parser.add_argument("--interpolate", action="store_true", help="Interpolate to regular grid")
-    parser.add_argument("--spacing", type=float, default=1.2, metavar="KM", help="Grid spacing in km (default: 1.2)")
+    parser.add_argument("--spacing", type=float, default=2.0, metavar="KM", help="Grid spacing in km (default: 2.0)")
     
     # Column mapping by index
     parser.add_argument("--x-nztm-col", type=int, required=True, help="NZTM X coordinate column index")
@@ -264,7 +267,7 @@ Examples:
         vs = interpolate_property(df, x_nztm, y_nztm, elevations, "vs")
         rho = interpolate_property(df, x_nztm, y_nztm, elevations, "rho")
     else:
-        # No interpolation - just organize by elevation
+        # No interpolation - organize points by elevation into grid cells
         print("\n   Organizing data by elevation (no interpolation)...")
         x_nztm = np.array(sorted(df['x_nztm'].unique()))
         y_nztm = np.array(sorted(df['y_nztm'].unique()))
@@ -277,7 +280,21 @@ Examples:
         for iz, elev in enumerate(elevations):
             df_e = df[np.isclose(df["elevation"], elev, atol=1e-3)]
             n_points = len(df_e)
-            print(f"     Elevation {elev:7.2f} km: {n_points:,} points")
+            print(f"     Elevation {elev:7.2f} km: {n_points:,} points", end="")
+            
+            if n_points > 0:
+                # Fast direct indexing: use searchsorted to find grid cell indices
+                x_indices = np.searchsorted(x_nztm, df_e["x_nztm"].values)
+                y_indices = np.searchsorted(y_nztm, df_e["y_nztm"].values)
+                
+                # Assign values directly to grid cells
+                vp[iz, y_indices, x_indices] = df_e["vp"].values
+                vs[iz, y_indices, x_indices] = df_e["vs"].values
+                rho[iz, y_indices, x_indices] = df_e["rho"].values
+                
+                print(f" -> {n_points:,} points assigned")
+            else:
+                print()
     
     print("\n   Writing HDF5...")
     write_hdf5(output_file, x_nztm, y_nztm, elevations, vp, vs, rho, args.compression)
