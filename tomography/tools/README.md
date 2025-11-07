@@ -125,7 +125,7 @@ python format_nztm_tomo_data.py EP2020_NZTM.csv \
 # Step 2: Interpolate to regular grid
 python interpolate_nztm_tomo_data.py EP2020_NZTM_sparse.h5 --spacing 2.0
 
-# Step 3: Create visualization
+# Step 3: Create visualization - with `--sparse` for overlay comparison
 python map_nztm_tomo.py EP2020_NZTM_grid.h5 --scalar vs --elevations -3 --sparse EP2020_NZTM_sparse.h5 --vmin 1 --vmax 6
 ```
 
@@ -151,7 +151,7 @@ python format_nztm_tomo_data.py DB2025_NZTM.parquet \
 # Step 2: Interpolate to grid
 python interpolate_nztm_tomo_data.py DB2025_NZTM_sparse.h5
 
-# Step 3: Create maps
+# Step 3: Create maps : You can just load `sparse` data by omitting grid .h5 file.
 python map_nztm_tomo.py --sparse DB2025_NZTM_sparse.h5 --scalar vs --elevations -3 \
   --vmin 1 --vmax 6 --no-outline-marker
 ```
@@ -160,6 +160,7 @@ python map_nztm_tomo.py --sparse DB2025_NZTM_sparse.h5 --scalar vs --elevations 
 ### Example 3: CHOW2020 (NetCDF - Pre-gridded)
 
 The CHOW2020 dataset consists of three pre-gridded NetCDF files (shallow, crust, mantle) at different resolutions. These should be merged before visualization.
+No sparse .h5 file is separately created, and no interpolation is needed.
 
 ```bash
 # Merge three CHOW2020 models (see separate merge_chow2020.py script)
@@ -170,16 +171,6 @@ python merge_chow2020.py \
 
 # Directly visualize the merged gridded model
 python map_nztm_tomo.py chow_merged.h5 --scalar vs --elevations -3 --vmin 1 --vmax 6
-```
-<img src="images/DB2025_sparse_only_vs_elev-3.0.png" width="70%" />
-
-### Example 4: Overlay Comparison
-
-Compare sparse points from one dataset against gridded model from another:
-
-```bash
-python map_nztm_tomo.py gridded_model.h5 \
-
 ```
 <img src="images/CHOW2020_vs_elev-3.png" width="70%" />
 
